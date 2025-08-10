@@ -1,3 +1,196 @@
-{
-    "liveServer.settings.port": 5501
-}
+import tkinter as tk
+import webbrowser
+from flask import Flask, send_file
+import threading
+import os
+
+# ========== CLI CALCULATOR ==========
+def cli_calculator():
+    def calculate(expr):
+        try:
+            allowed = "0123456789+-*/(). "
+            if any(c not in allowed for c in expr):
+                return "Invalid characters"
+            return eval(expr, {"__builtins__": None}, {})
+        except Exception as e:
+            return "Error: " + str(e)
+
+    print("\n--- CLI Calculator ---")
+    print("Type 'exit' to quit.\n")
+    while True:
+        expr = input(">>> ").strip()
+        if expr.lower() in ("exit", "quit"):
+            break
+        if not expr:
+            continue
+        print(calculate(expr))
+
+
+# ========== TKINTER GUI CALCULATOR ==========
+def gui_calculator():
+    def add_char(c):
+        entry.insert(tk.END, c)
+
+    def clear():
+        entry.delete(0, tk.END)
+
+    def backspace():
+        s = entry.get()
+        entry.delete(0, tk.END)
+        entry.insert(0, s[:-1])
+
+    def calculate():
+        expr = entry.get()
+        try:
+            allowed = "0123456789+-*/(). "
+            if any(ch not in allowed for ch in expr):
+                result_var.set("Invalid")
+                return
+            res = eval(expr, {"__builtins__": None}, {})
+            result_var.set(str(res))
+        except Exception:
+            result_var.set("Error")
+
+    root = tk.Tk()
+    root.title("Calculator")
+
+    entry = tk.Entry(root, font=("Arial", 20), justify='right')
+    entry.grid(row=0, column=0, columnspan=4, padx=5, pady=5, sticky="we")
+
+    result_var = tk.StringVar()
+    result_label = tk.Label(root, textvariable=result_var, anchor='e', font=("Arial", 14))
+    result_label.grid(row=1, column=0, columnspan=4, sticky="we")
+
+    buttons = [
+        ('7',1,0),('8',1,1),('9',1,2),('/',1,3),
+        ('4',2,0),('5',2,1),('6',2,2),('*',2,3),
+        ('1',3,0),('2',3,1),('3',3,2),('-',3,3),
+        ('0',4,0),('.',4,1),('=',4,2),('+',4,3)
+    ]
+    for (txt,r,c) in buttons:
+        if txt == '=':
+            b = tk.Button(root, text=txt, width=5, height=2, command=calculate)
+        else:
+            b = tk.Button(root, text=txt, width=5, height=2, command=lambda t=txt: add_char(t))
+        b.grid(row=r+1, column=c, padx=3, pady=3)
+
+    tk.Button(root, text='C', width=5, height=2, command=clear).grid(row=5, column=0, padx=3, pady=3)
+    tk.Button(root, text='⌫', width=5, height=2, command=backspace).grid(row=5, column=1, padx=3, pady=3)
+    tk.Button(root, text='Exit', width=11, height=2, command=root.destroy).grid(row=5, column=2, columnspan=2, padx=3, pady=3)
+
+    root.mainloop()
+
+
+# ========== HTML CALCULATOR WITH FLASK ==========
+html_code = """<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Calculator</title>
+  <style>
+    body { font-family: Arial, sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; background:#f3f3f3; }
+    .calc { background:white; padding:20px; border-radius:10px; box-shadow:0 6px 18px rgba(0,0,0,0.1); width:260px; }
+    .display { height:50px; font-size:20px; text-align:right; padding:10px; border:1px solid #ddd; border-radius:6px; margin-bottom:10px; }
+    .keys { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+    button { padding:15px; font-size:18px; border-radius:6px; border: none; cursor:pointer; }
+    button.op { background:#f0ad4e; color:white; }
+    button.equal { grid-column:span 2; background:#5cb85c; color:white; }
+    button.clear { background:#d9534f; color:white; }
+  </style>
+</head>
+<body>
+  <div class="calc">
+    <input id="display" class="display" readonly />
+    <div class="keys">
+      <button class="clear" id="clear">C</button>
+      <button id="back">⌫</button>
+      <button id="paren">()</button>
+      <button class="op" data-op="/">÷</button>
+
+      <button data-num>7</button>
+      <button data-num>8</button>
+      <button data-num>9</button>
+      <button class="op" data-op="*">×</button>
+
+      <button data-num>4</button>
+      <button data-num>5</button>
+      <button data-num>6</button>
+      <button class="op" data-op="-">−</button>
+
+      <button data-num>1</button>
+      <button data-num>2</button>
+      <button data-num>3</button>
+      <button class="op" data-op="+">+</button>
+
+      <button data-num>0</button>
+      <button data-num>.</button>
+      <button class="equal" id="equals">=</button>
+    </div>
+  </div>
+
+  <script>
+    const display = document.getElementById('display');
+    document.querySelectorAll('[data-num]').forEach(b => b.addEventListener('click', () => display.value += b.textContent));
+    document.querySelectorAll('.op').forEach(b => b.addEventListener('click', () => display.value += b.getAttribute('data-op')));
+    document.getElementById('clear').addEventListener('click', () => display.value = '');
+    document.getElementById('back').addEventListener('click', () => display.value = display.value.slice(0, -1));
+    document.getElementById('paren').addEventListener('click', () => {
+      const v = display.value;
+      const open = (v.match(/\\(/g)||[]).length;
+      const close = (v.match(/\\)/g)||[]).length;
+      display.value += open === close ? '(' : ')';
+    });
+    document.getElementById('equals').addEventListener('click', calculate);
+    display.addEventListener('keydown', (e) => { if (e.key === 'Enter') calculate(); });
+    function calculate(){
+      const expr = display.value;
+      try {
+        if (/[^0-9+\\-*/(). ]/.test(expr)) { display.value = "Error"; return; }
+        const result = Function('"use strict"; return (' + expr + ')')();
+        display.value = String(result);
+      } catch (e) { display.value = "Error"; }
+    }
+  </script>
+</body>
+</html>"""
+
+app = Flask(__name__)
+
+@app.route("/")
+def serve_calculator():
+    return html_code
+
+def run_flask():
+    app.run(port=5000, debug=False)
+
+def web_calculator():
+    threading.Thread(target=run_flask).start()
+    webbrowser.open("http://127.0.0.1:5000")
+
+
+# ========== MAIN MENU ==========
+if __name__ == "__main__":
+    while True:
+        print("\n--- Multi Calculator ---")
+        print("1) CLI Calculator")
+        print("2) Tkinter GUI Calculator")
+        print("3) Web HTML Calculator")
+        print("4) Exit")
+
+        choice = input("Select (1-4): ").strip()
+        if choice == "1":
+            cli_calculator()
+        elif choice == "2":
+            gui_calculator()
+        elif choice == "3":
+            try:
+                import flask
+            except ImportError:
+                print("Please install Flask: pip install flask")
+            else:
+                web_calculator()
+        elif choice == "4":
+            print("Goodbye!")
+            break
+        else:
+            print("Invalid choice.")
